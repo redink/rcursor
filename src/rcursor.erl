@@ -30,6 +30,9 @@
 -record(state, {}).
 
 -type ets_tab() :: ets:tid() | atom().
+-type groupid() :: term().
+-type userid()  :: term().
+-type msgid()   :: term().
 
 %%%===================================================================
 %%% API
@@ -42,11 +45,11 @@ start_link() ->
 stop() ->
     gen_server:call(?SERVER, stop).
 
--spec new_group_cursor(term(), integer()) -> ok | already_exist.
+-spec new_group_cursor(groupid(), integer()) -> ok | already_exist.
 new_group_cursor(GroupID, MsgNumLimit) ->
     gen_server:call(?SERVER, {new_group_cursor, GroupID, MsgNumLimit}).
 
--spec write_msg(term(), term()) -> {error, group_not_found} | {ok, integer()}.
+-spec write_msg(groupid(), msgid()) -> {error, group_not_found} | {ok, integer()}.
 write_msg(GroupID, MsgID) ->
     case ets:lookup(?SERVER, GroupID) of
         [] ->
@@ -62,12 +65,12 @@ write_msg(GroupID, MsgID) ->
             {ok, ets:info(MsgIDTable, size)}
     end.
 
--spec read_msg(term(), term()) ->
+-spec read_msg(groupid(), userid()) ->
         {error, group_not_found} | {ok, list()}.
 read_msg(GroupID, UserID) ->
     batch_read_msg(GroupID, UserID, 1).
 
--spec batch_read_msg(term(), term(), integer()) ->
+-spec batch_read_msg(groupid(), userid(), integer()) ->
         {error, group_not_found} | {ok, list()}.
 batch_read_msg(GroupID, UserID, Num) ->
     case ets:lookup(?SERVER, GroupID) of
@@ -78,7 +81,7 @@ batch_read_msg(GroupID, UserID, Num) ->
             {ok, batch_read_msg(MsgIDTable, Num, CurrentMsgID, [])}
     end.
 
--spec ack_msg(term(), term(), term()) ->
+-spec ack_msg(groupid(), userid(), msgid()) ->
         {error, group_not_found} | {error, msgid_not_found} | ok.
 ack_msg(GroupID, UserID, MsgID) ->
     case ets:lookup(?SERVER, GroupID) of
@@ -135,8 +138,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
--spec read_msg(ets_tab(), term(), ets_tab()) ->
-        '$end_of_table' | term().
+-spec read_msg(ets_tab(), userid(), ets_tab()) ->
+        '$end_of_table' | msgid().
 read_msg(UserCursorTable, UserID, MsgIDTable) ->
     case ets:lookup(UserCursorTable, UserID) of
         [] ->
@@ -145,7 +148,7 @@ read_msg(UserCursorTable, UserID, MsgIDTable) ->
             ets_next(MsgIDTable, UserCursorIndex)
     end.
 
--spec batch_read_msg(ets_tab(), integer(), term(), list()) -> list().
+-spec batch_read_msg(ets_tab(), integer(), msgid(), list()) -> list().
 batch_read_msg(_MsgIDTable, 0, _, Res) ->
     lists:reverse(Res);
 batch_read_msg(_MsgIDTable, _Num, '$end_of_table', Res) ->
@@ -153,7 +156,7 @@ batch_read_msg(_MsgIDTable, _Num, '$end_of_table', Res) ->
 batch_read_msg(MsgIDTable, Num, Key, Res) ->
     batch_read_msg(MsgIDTable, Num - 1, ets_next(MsgIDTable, Key), [Key | Res]).
 
--spec ack_msg(ets_tab(), term(), ets_tab(), term()) ->
+-spec ack_msg(ets_tab(), msgid(), ets_tab(), userid()) ->
         {error, msgid_not_found} | ok.
 ack_msg(MsgIDTable, MsgID, UserCursorTable, UserID) ->
     case ets:lookup(MsgIDTable, MsgID) of
@@ -164,7 +167,7 @@ ack_msg(MsgIDTable, MsgID, UserCursorTable, UserID) ->
             ok
     end.
 
--spec new_group_cursor_do(term(), integer()) -> ok.
+-spec new_group_cursor_do(groupid(), integer()) -> ok.
 new_group_cursor_do(GroupID, MsgNumLimit) ->
     UserCursorTable = ets:new(user_cursor, [set, public]),
     MsgIDTable      = ets:new(msgid, [ordered_set, public]),
@@ -210,6 +213,7 @@ rcursor_test_() ->
             ?assertEqual({ok, [2]}, read_msg("group1", "user1")),
             ?assertEqual({ok, [2]}, read_msg("group1", "user2")),
             ?assertEqual({ok, [2]}, read_msg("group1", "user3")),
+            ?assertEqual({ok, [2]}, read_msg("group1", "user1")),
             %%
             ?assertEqual({error, group_not_found}, ack_msg("group2", "user1", 2)),
             ?assertEqual({error, msgid_not_found}, ack_msg("group1", "user1", fake)),
@@ -217,6 +221,7 @@ rcursor_test_() ->
             ?assertEqual(ok, ack_msg("group1", "user2", 2)),
             %%
             ?assertEqual({ok, [3,4,5,6,7,8,9,10]}, batch_read_msg("group1", "user1", 8)),
+            ?assertEqual({ok, [3]}, read_msg("group1", "user1")),
             ?assertEqual(ok, ack_msg("group1", "user1", 10)),
             ?assertEqual({ok, [11,12,13,14,15,16]}, batch_read_msg("group1", "user1", 6)),
             ?assertEqual(ok, ack_msg("group1", "user1", 16)),
