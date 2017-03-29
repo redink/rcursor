@@ -1,0 +1,7 @@
+ebin
+logs
+*.beam
+.rebar
+.eunit/
+doc/
+

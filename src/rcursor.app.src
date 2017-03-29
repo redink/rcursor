@@ -1,0 +1,14 @@
+{application, rcursor,
+ [
+  {description, "An Erlang rcursor library"},
+  {vsn, "1"},
+  {modules, [
+             rcursor
+            ]},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {env, []}
+ ]}.
